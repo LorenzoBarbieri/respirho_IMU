@@ -1,69 +1,3 @@
-/**
- * This software is subject to the ANT+ Shared Source License
- * www.thisisant.com/swlicenses
- * Copyright (c) Garmin Canada Inc. 2014
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or
- * without modification, are permitted provided that the following
- * conditions are met:
- *
- *    1) Redistributions of source code must retain the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer.
- *
- *    2) Redistributions in binary form must reproduce the above
- *       copyright notice, this list of conditions and the following
- *       disclaimer in the documentation and/or other materials
- *       provided with the distribution.
- *
- *    3) Neither the name of Garmin nor the names of its
- *       contributors may be used to endorse or promote products
- *       derived from this software without specific prior
- *       written permission.
- *
- * The following actions are prohibited:
- *
- *    1) Redistribution of source code containing the ANT+ Network
- *       Key. The ANT+ Network Key is available to ANT+ Adopters.
- *       Please refer to http://thisisant.com to become an ANT+
- *       Adopter and access the key. 
- *
- *    2) Reverse engineering, decompilation, and/or disassembly of
- *       software provided in binary form under this license.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
- * CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
- * INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE HEREBY
- * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
- * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES(INCLUDING, 
- * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR 
- * SERVICES; DAMAGE TO ANY DEVICE, LOSS OF USE, DATA, OR 
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
- * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
- * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN 
- * ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED 
- * OF THE POSSIBILITY OF SUCH DAMAGE. SOME STATES DO NOT ALLOW 
- * THE EXCLUSION OF INCIDENTAL OR CONSEQUENTIAL DAMAGES, SO THE
- * ABOVE LIMITATIONS MAY NOT APPLY TO YOU.
- *
- */
-/**@file
- * @defgroup ant_broadcast_rx_example ANT Broadcast RX Example
- * @{
- * @ingroup nrf_ant_broadcast
- *
- * @brief Example of basic ANT Broadcast RX.
- *
- * Before compiling this example for NRF52, complete the following steps:
- * - Download the S212 SoftDevice from <a href="https://www.thisisant.com/developer/components/nrf52832" target="_blank">thisisant.com</a>.
- * - Extract the downloaded zip file and copy the S212 SoftDevice headers to <tt>\<InstallFolder\>/components/softdevice/s212/headers</tt>.
- * If you are using Keil packs, copy the files into a @c headers folder in your example folder.
- * - Make sure that @ref ANT_LICENSE_KEY in @c nrf_sdm.h is uncommented.
- */
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -71,23 +5,88 @@
 #include "bsp.h"
 #include "hardfault.h"
 #include "app_error.h"
+#include "app_timer.h"
+#include "nrf_drv_rtc.h"
+#include "nrf_drv_clock.h"
+#include "nrf_gpio.h"
 #include "nrf_sdh.h"
 #include "nrf_sdh_ant.h"
 #include "nrf_pwr_mgmt.h"
 #include "ant_interface.h"
 #include "ant_parameters.h"
 #include "ant_channel_config.h"
-// app timer
-#include "nordic_common.h"
-#include "app_timer.h"
-#include "nrf_drv_clock.h"
-#include "nrf_gpio.h"
-// log
+#define led_ant 17
+#define led_timer 19
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
 #define APP_ANT_OBSERVER_PRIO   1    /**< Application's ANT observer priority. You shouldn't need to modify this value. */
+
+// ================= RTC program ========================== //
+// Create a handle that will point to the RTC 2 of nrf device
+const nrfx_rtc_t rtc = NRFX_RTC_INSTANCE(2); // rtc 2 handle
+
+//clock initialization, not needed if softdevice is present
+static void lfclk_config(void)
+{
+	// Initialize the low frequency clock 
+  ret_code_t err_code = nrf_drv_clock_init();
+  APP_ERROR_CHECK(err_code); // check for the errors
+
+// Request the clock to not to generate events
+  nrf_drv_clock_lfclk_request(NULL);
+}
+
+// RTC interrupt handler which will be used to handle the interrupt events
+static void rtc_handler(nrfx_rtc_int_type_t int_type)
+{
+	// Check if the interrupt occurred due to tick event
+    if(int_type == NRFX_RTC_INT_TICK)
+    {
+      // perform some action
+      nrf_gpio_pin_toggle(led_timer);
+
+     
+
+    }
+
+
+    else
+    {
+		// default action 
+		// leave it empty
+    }
+	
+}
+
+// A function to configure and intialize the RTC
+static void rtc_config(void)
+{
+	
+    uint32_t err_code; // a variable to hold the error values
+
+// Create a struct of type nrfx_rtc_config_t and assign it default values
+    nrfx_rtc_config_t rtc_config = NRFX_RTC_DEFAULT_CONFIG;
+
+// Configure the prescaler to generate ticks for a specific time unit
+// Configured it to tick every 125ms 
+    rtc_config.prescaler = 4095; // tick =  32768 / (4095 + 1) = 8Hz = 125ms
+
+// Initialize the rtc and pass the configurations along with the interrupt handler
+    err_code = nrfx_rtc_init(&rtc, &rtc_config, rtc_handler);
+    APP_ERROR_CHECK(err_code); // check for errors
+
+ 
+// Generate a tick event on each tick
+ nrfx_rtc_tick_enable(&rtc, true);
+
+// start the rtc 
+    nrfx_rtc_enable(&rtc);
+
+
+}
+
 
 /**@brief Function for handling a ANT stack event.
  *
@@ -107,9 +106,9 @@ void ant_evt_handler(ant_evt_t * p_ant_evt, void * p_context)
                  || p_ant_evt->message.ANT_MESSAGE_ucMesgID == MESG_ACKNOWLEDGED_DATA_ID
                  || p_ant_evt->message.ANT_MESSAGE_ucMesgID == MESG_BURST_DATA_ID)
                 {
-                    err_code = bsp_indication_set(BSP_INDICATE_RCV_OK);
+                    //err_code = bsp_indication_set(BSP_INDICATE_RCV_OK);
                     APP_ERROR_CHECK(err_code);
-                    nrf_gpio_pin_toggle(7);
+                    nrf_gpio_pin_toggle(led_ant);
                 }
                 break;
 
@@ -193,7 +192,12 @@ int main(void)
     utils_setup();
     softdevice_setup();
     ant_channel_rx_broadcast_setup();
-    nrf_gpio_cfg_output(7);
+    nrf_gpio_cfg_output(led_ant);
+    nrf_gpio_cfg_output(led_timer);
+    
+    //lfclk_config();
+    rtc_config();
+
     NRF_LOG_INFO("ANT Broadcast RX example started.");
 
     // Main loop.
@@ -201,6 +205,9 @@ int main(void)
     {
         NRF_LOG_FLUSH();
         nrf_pwr_mgmt_run();
+        //__SEV();
+        // __WFE();
+        //__WFE();
     }
 }
 

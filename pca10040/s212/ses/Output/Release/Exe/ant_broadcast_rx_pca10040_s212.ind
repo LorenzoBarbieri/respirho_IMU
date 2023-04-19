@@ -14,6 +14,7 @@
 "Output/Release/Obj/ant_broadcast_rx_pca10040_s212/nrfx_uarte.o"
 "Output/Release/Obj/ant_broadcast_rx_pca10040_s212/nrf_drv_clock.o"
 "Output/Release/Obj/ant_broadcast_rx_pca10040_s212/nrfx_clock.o"
+"Output/Release/Obj/ant_broadcast_rx_pca10040_s212/nrfx_rtc.o"
 "Output/Release/Obj/ant_broadcast_rx_pca10040_s212/app_button.o"
 "Output/Release/Obj/ant_broadcast_rx_pca10040_s212/app_error.o"
 "Output/Release/Obj/ant_broadcast_rx_pca10040_s212/app_error_handler_gcc.o"
